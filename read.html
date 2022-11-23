@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+
+<html>
+
+<head></head>
+
+<body>
+    <object id="md"></object>
+    <div id="information"></div>
+    <script>
+        var myURL = window.location;
+        var searchParams = new URLSearchParams(myURL.search);
+        var linkfile = document.getElementById("md");
+        linkfile.data = "./reads/" + searchParams.get('eid') + ".md";
+    </script>
+</body>
+
+</html>
