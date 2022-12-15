@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Nim 中文教程</title>
+</head>
+
+<body>
+  <main>
+    <div class="post">
+      <div class="post-info">原文请到 <a href="https://howistart.org/posts/nim/1/index.html">How I Start</a><br>翻译：<a
+          href="https://expector-hutch.github.io/">Expector</a>（畅）<br>作者：<a href="http://felsin9.de/nnis/">Dennis Felsing</a></div>
+      <h1 class="post-title">Nim</h1>
+      <div class="post-line"></div>
+      <p><a href="http://nim-lang.org/">Nim</a> 是一个与其 1.0 版本相似的新颖且令人兴奋的命令式编程语言。我使用 Nim
+        是为了它的性能与优雅，这无疑让我感到了莫大的乐趣。在这篇文章中我将向您展示一个我写的 Nim 项目的全部流程。</p>
+      <p>本文我们要实现 <a href="https://en.wikipedia.org/wiki/Brainfuck">Brainfuck</a> 语言的解释器。虽然 Nim 是一个实用且特性丰富的编程语言，而
+        Brainfuck 则是仅由八个命令组成的一无是处的编程语言，但它的简陋对我们实现一个简单的解释器却是极棒的。稍后我们将实现具有高性能的编译时的将 Brainfuck 编译为 Nim 的解释器。我们最终将将其制作成 <a
+          href="https://github.com/nim-lang/nimble">nimble包</a> 并<a
+          href="https://github.com/def-/nim-brainfuck">发布到在线仓库</a>。</p>
+      <h2 id="installation">安装 Nim</h2>
+      <p>安装 Nim 非常简单，你可以直接参照<a href="http://nim-lang.org/download.html">官方说明</a>。 Nim 对 Windows
+        系统直接提供可执行文件。在其他操作系统上你可以运行<code>build.sh</code>来编译生成的 C 语言代码，这在现代计算机操作系统上应该只需要不到 1 分钟。</p>
+      <p>这给我们带来了关于 Nim 的第一个有趣的事实：它主要编译成 C（C++、ObjectiveC 甚至 JavaScript），然后使用您选择的高度优化的 C 编译器生成实际程序。你就可以免费从成熟的 C 生态系统中受益。
+      </p>
+      <p>如果你选择引导完全用Nim本身编写的 <a href="https://github.com/nim-lang/Nim">Nim 编译器</a>，你可以看到编译器只需几个简单步骤（不到2分钟）就可以完成自举：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-bash" data-lang="bash">$ git clone https://github.com/nim-lang/Nim
+$ <span class="nb">cd</span> Nim
+$ git clone --depth <span class="m">1</span> https://github.com/nim-lang/csources
+$ <span class="nb">cd</span> csources <span class="o">&amp;&amp;</span> sh build.sh
+$ <span class="nb">cd</span> ..
+$ bin/nim c koch
+$ ./koch boot -d:release</code></pre>
+      </div>
+      <p>通过这种方式，您可以获得 Nim 的开发版本。使用两个步骤应该来保持最新：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-bash" data-lang="bash">$ git pull
+$ ./koch boot -d:release</code></pre>
+      </div>
+      <p>要是你没有<code>git</code>，现在也是绝佳的安装它的时机。大部分nimble包都需要<code>git</code>来获取。在基于 Debian 的操作系统上（比如 Ubuntu）我们可以像这样安装它：
+      </p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-bash" data-lang="bash">$ sudo apt-get install git</code></pre>
+      </div>
+      <p>安装完成后，你需要将<code>nim</code> 添加到你的环境变量中。以下是在 bash 中的操作方法：</p>
+      <pre><code>$ echo 'export PATH=$PATH:$your_install_dir/bin' &gt;&gt; ~/.profile
+$ source ~/.profile
+$ nim
+Nim Compiler Version 0.17.3 [Linux: amd64]
+Copyright (c) 2006-2017 by Andreas Rumpf
+::
+
+    nim command [options] [projectfile] [arguments]
+
+Command:
+  compile, c                compile project with default code generator (C)
+  doc                       generate the documentation for inputfile
+...</code></pre>
+      <p>只要<code>nim</code>告诉了我们其版本与状态，我们就可以愉快的继续了。现在 <a href="http://nim-lang.org/docs/lib.html">Nim
+          标准库</a>只是一些简单的模块，其他所有包都可以使用<a href="https://github.com/nim-lang/nimble">nimble</a>来安装。让我们遵循<a
+          href="https://github.com/nim-lang/nimble#Installation">单行安装说明</a>：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-bash" data-lang="bash">$ ./koch nimble</code></pre>
+      </div>
+      <p>Nimble 的二进制目录也需要添加到环境变量：</p>
+      <pre><code>$ echo 'export PATH=$PATH:$HOME/.nimble/bin' &gt;&gt; ~/.profile
+$ source ~/.profile
+$ nimble update
+Downloading Official package list
+    Success Package list downloaded.
+</code></pre>
+      <p>现在我们在终端可以查看所有可用的 <a href="http://nim-lang.org/docs/lib.html#nimble">nimble 包</a>：</p>
+      <pre><code>$ nimble search docopt
+docopt:
+  url:         https://github.com/docopt/docopt.nim (git)
+  tags:        commandline, arguments, parsing, library
+  description: Command-line args parser based on Usage message
+  license:     MIT
+  website:     https://github.com/docopt/docopt.nim</code></pre>
+      <p>让我们安装我们发现的这个不错的 <a href="https://github.com/docopt/docopt.nim">docopt 库</a>，也许我们稍后会需要它：</p>
+      <pre><code>$ nimble install docopt
+...
+  Verifying dependencies for docopt@0.6.5
+ Installing docopt@0.6.5
+   Success: docopt installed successfully.</code></pre>
+      <p>请注意库的安装速度有多快（对我来说不到1秒）。这个是尼姆的另一个很好的效果。基本上，库的源代码只是下载后，不会编译任何类似共享库的内容。取而代之的是一旦我们使用了这个库，它将被简单地静态编译到我们的程序中。</p>
+      <p>主流的编辑器中<a href="https://github.com/nim-lang/Nim/wiki/Editor-Support">支持 Nim 的编辑器</a>有 Emacs（<a
+          href="https://github.com/reactormonk/nim-mode">nim-mode</a>），Vim（<a
+          href="https://github.com/zah/nimrod.vim/">nimrod.vim</a>这只是我的选择）以及 Sublime（<a
+          href="https://github.com/Varriount/NimLime">NimLime</a>）。对于本指南的范围任何文本编辑器都 OK。</p>
+      <h2 id="project-setup">项目配置</h2>
+      <p>现在我们可以开始我们的项目了：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-bash" data-lang="bash">$ mkdir brainfuck
+$ <span class="nb">cd</span> brainfuck</code></pre>
+      </div>
+      <p>第一步当然就是万年不变的 <code>Hello World</code> 了！让我们创建 <code>hello.nim</code>并写入以下内容：</p>
+      <div class="highlight">
+        <pre
+          class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="n">echo</span> <span class="s">&#34;Hello World&#34;</span></code></pre>
+      </div>
+      <p>让我们先使用以下两个单独的步骤来编译运行它：</p>
+      <pre><code>$ nim c hello
+$ ./hello
+Hello World</code></pre>
+      <p>然后只需一步，通过指示 Nim 编译器方便地编译并直接执行二进制文件：</p>
+      <pre><code>$ nim c -r hello
+Hello World</code></pre>
+      <p>让我们让代码做些稍微复杂一点的事情，这应该需要一个更长的运行时间：</p>
+      <div class="highlight">
+        <pre
+          class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="kd">var</span> <span class="n">x</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="mi">1</span> <span class="p">..</span> <span class="mi">100_000_000</span><span class="p">:</span>
+  <span class="n">inc</span> <span class="n">x</span> <span class="c"># 自增 x，这是一个注释</span>
+
+<span class="n">echo</span> <span class="s">&#34;Hello World &#34;</span><span class="p">,</span> <span class="n">x</span></code></pre>
+      </div>
+      <p>在这段代码中我们先声明变量<code>x</code>的值为 0 再把它循环加了 1000
+        万次。再次尝试编译它。注意跑了多长时间。Nim的表现糟糕吗？当然不是，恰恰相反！我们目前只是在完全调试模式下构建二进制文件，添加了对整数溢出、数组越界等等的检查，以及不优化二进制。使用选项<code>-d:release</code>可以让我们进入发行版编译模式，令程序运行如窜稀：
+      </p>
+      <pre><code>$ nim c hello
+$ time ./hello
+Hello World 100000000
+./hello  2.01s user 0.00s system 99% cpu 2.013 total
+$ nim -d:release c hello
+$ time ./hello
+Hello World 100000000
+./hello  0.00s user 0.00s system 74% cpu 0.002 total</code></pre>
+      <p>简直快得升天！C编译器优化了整个<code>for</code>循环。666！</p>
+      <p>创建一个项目可以使用<code>nimble init</code>来初始化基本的包配置文件：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-bash" data-lang="bash">$ nimble init brainfuck
+      Info: In order to initialise a new Nimble package, I will need to ask you
+        ... some questions. Default values are shown in square brackets, press
+        ... enter to use them.
+    Prompt: Initial version of package? <span class="o">[</span>0.2.0<span class="o">]</span>
+    Answer: 
+    Prompt: Your name? <span class="o">[</span>Dennis Felsing<span class="o">]</span>
+    Answer: 
+    Prompt: Package description?
+    Answer: A brainfuck interpreter
+    Prompt: Package license? <span class="o">[</span>MIT<span class="o">]</span>
+    Answer: 
+    Prompt: Lowest supported Nim version? <span class="o">[</span>0.17.3<span class="o">]</span>
+    Answer: 0.10.0
+   Success: Nimble file created successfully</code></pre>
+      </div>
+      <p>创建出的<code>brainfuck.nimble</code>应像这样：</p>
+      <pre><code># Package
+
+version       = &quot;0.2.0&quot;
+author        = &quot;Dennis Felsing&quot;
+description   = &quot;A brainfuck interpreter&quot;
+license       = &quot;MIT&quot;
+
+# Dependencies
+
+requires &quot;nim &gt;= 0.10.0&quot;
+</code></pre>
+      <p>让我们在此 <a href="https://github.com/nim-lang/nimble/#creating-packages">nimble 包构建文档</a>中添加对 docopt
+        和我们想要创建的二进制文件的需求：</p>
+      <pre><code># Package
+
+version       = &quot;0.2.0&quot;
+author        = &quot;Dennis Felsing&quot;
+description   = &quot;A brainfuck interpreter&quot;
+license       = &quot;MIT&quot;
+
+bin           = @[&quot;brainfuck&quot;]
+
+# Dependencies
+
+requires &quot;nim &gt;= 0.10.0&quot;
+requires &quot;docopt &gt;= 0.1.0&quot;</code></pre>
+      <p>因为我们已经安装了 git，所以我们希望保留源代码的修订版代码，可能想在某个时候在线发布，让我们初始化一个 git 存储库：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-bash" data-lang="bash">$ git init
+$ git add brainfuck.nim brainfuck.nimble .gitignore</code></pre>
+      </div>
+      <p>我刚刚初始化了<code>.gitignore</code>文件到此：</p>
+      <pre><code>nimcache/
+*.swp</code></pre>
+      <p>我们让 git 忽略 vim 的交换文件，以及<code>nimcache</code>所目录包含的为我们的项目生成的C代码。如果你好奇的话可以去看看 Nim 是如何编译成 C 语言的。</p>
+      <p>为了看看 nimble 能做什么，让我们初始化我们的主程序<code>brainfuck.nim</code>：</p>
+      <div class="highlight">
+        <pre
+          class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="n">echo</span> <span class="s">&#34;Welcome to brainfuck&#34;</span></code></pre>
+      </div>
+      <p>我们依然可以像编译<code>hello.nim</code>那样编译它，但既然我们以及准备好了把它编译成<code>brainfuck</code>包的配置，那就让<code>nimble</code>来编译吧：</p>
+      <pre><code>$ nimble build
+  Verifying dependencies for brainfuck@0.2.0
+      Info: Dependency on docopt@>= 0.6.5
+  Verifying dependencies for docopt@0.6.5
+   Building brainfuck/brainfuck using c backend
+$ ./brainfuck
+Welcome to brainfuck</code></pre>
+      <p><code>nimble install</code>可用于在系统上安装二进制文件，以便我们可以从任何位置运行它：</p>
+      <pre><code>$ nimble install
+  Verifying dependencies for brainfuck@0.2.0
+      Info: Dependency on docopt@>= 0.6.5&gt;= 0.6.5 already satisfied
+  Verifying dependencies for docopt@0.6.5
+ Installing brainfuck@0.2.0
+   Building brainfuck/brainfuck using c backend
+   Success: brainfuck installed successfully.
+$ brainfuck
+Welcome to brainfuck</code></pre>
+      <p>
+        这非常适合程序工作的情况，但实际上<code>nimble build</code>为我们做了一个发布版本。这比调试版本需要更长的时间，并且省略了在开发过程中非常重要的检查，因此现在更适合使用<code>nim c -r brainfuck</code>。在开发过程中，请经常执行我们的程序，以了解一切的工作原理。
+      </p>
+      <h2 id="coding">编程</h2>
+      <p>编程时，Nim 的<a href="http://nim-lang.org/documentation.html">文档</a>很有用。如果您还不知道在哪里可以找到什么，可以查找<a href="http://nim-lang.org/docs/theindex.html">文档目录</a>。</p>
+      <p>让我们从修改<code>brainfuck.nim</code>来启动我们的开发之旅吧：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="kn">import</span> <span class="n">os</span>
+</code></pre>
+      </div>
+      <p>首先，我们导入 <a href="http://nim-lang.org/docs/os.html">os 模块</a>，这将用来读取命令行参数。</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">let</span> <span class="n">code</span> <span class="o">=</span> <span class="k">if</span> <span class="n">paramCount</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span> <span class="n">readFile</span> <span class="n">paramStr</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+           <span class="k">else</span><span class="p">:</span> <span class="n">readAll</span> <span class="n">stdin</span>
+</code></pre>
+      </div>
+      <p><code>paramCount()</code>告诉我们传递给程序的命令行参数的数量。如果我们得到一个命令行参数，我们假设它是一个文件名，然后直接用<code>readFile paramStr(1)</code>读入。否则，我们从标准输入中读取所有内容。在这两种情况下，结果都存储在<code>code</code>变量中，该变量已用<code>let</code>关键字声明为不可变（即常量）。</p>
+      <p>为了看到其确实运行了，我们使用<code>echo code</code>：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="n">echo</span> <span class="n">code</span>
+</code></pre>
+      </div>
+      <p>尝试一下：</p>
+      <pre><code>$ nim c -r brainfuck
+...
+Welcome to brainfuck
+I'm entering something here and it is printed back later!
+I'm entering something here and it is printed back later!
+</code></pre>
+      <p>输入你的“code”后，以换行符和 ctrl-d 结束。或者你可以输入一个文件名，<code>nim c -r brainfuck</code>之后的所有内容都作为命令行参数传递给生成的二进制文件：</p>
+      <pre><code>$ nim c -r brainfuck .gitignore
+...
+Welcome to brainfuck
+nimcache/
+*.swp
+</code></pre>
+      <p>继续：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="kd">var</span>
+  <span class="n">tape</span> <span class="o">=</span> <span class="n">newSeq</span><span class="o">[</span><span class="kt">char</span><span class="o">]</span><span class="p">()</span>
+  <span class="n">codePos</span> <span class="o">=</span> <span class="mi">0</span>
+  <span class="n">tapePos</span> <span class="o">=</span> <span class="mi">0</span>
+</code></pre>
+      </div>
+      <p>我们声明了一些需要的变量。我们必须记住我们在<code>code</code>字符串的当前位置（<code>codePos</code>）和<code>tape</code>（磁带）的指针（<code>tapePos</code>）。Brainbuck 在无限增长的<code>tape</code>上工作，我们将其表示为由<code>char</code>（字符）组成的<code>seq</code>（序列）。序列是 Nim 的变长数组，除了使用<code>newSeq</code>声明之外，还可以使用<code>var x = @[1, 2, 3]</code>初始化序列。</p>
+      <p>让我们花点时间了解下：变量的类型不必被指定，它是由编译器自动推断的。如果我们想更加明确，我们可以这样做：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="kd">var</span>
+  <span class="n">tape</span><span class="p">:</span> <span class="kt">seq</span><span class="o">[</span><span class="kt">char</span><span class="o">]</span> <span class="o">=</span> <span class="n">newSeq</span><span class="o">[</span><span class="kt">char</span><span class="o">]</span><span class="p">()</span>
+  <span class="n">codePos</span><span class="p">:</span> <span class="kt">int</span> <span class="o">=</span> <span class="mi">0</span>
+  <span class="n">tapePos</span><span class="p">:</span> <span class="kt">int</span> <span class="o">=</span> <span class="mi">0</span>
+</code></pre>
+      </div>
+      <p>接下来我们编写一个小函数，然后立即调用它：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">run</span><span class="p">(</span><span class="n">skip</span> <span class="o">=</span> <span class="kp">false</span><span class="p">):</span> <span class="kt">bool</span> <span class="o">=</span>
+  <span class="n">echo</span> <span class="s">&#34;codePos: &#34;</span><span class="p">,</span> <span class="n">codePos</span><span class="p">,</span> <span class="s">&#34; tapePos: &#34;</span><span class="p">,</span> <span class="n">tapePos</span>
+
+<span class="k">discard</span> <span class="n">run</span><span class="p">()</span>
+</code></pre>
+      </div>
+      <p>有几点是需要注意的：</p>
+      <ul>
+        <li>我们需要一个默认值为<code>false</code>的<code>skip</code>参数；</li>
+        <li>显而易见的是参数为<code>bool</code>类型；</li>
+        <li>返回值的类型也是<code>bool</code>，可为什么我们没有返回呢？这是因为返回值默认为二进制的 0 ，也就是<code>false</code>。</li>
+        <li>在所有函数中我们都可以用<code>result = true</code>隐式赋值<code>result</code>.
+        </li>
+        <li>通过使用<code>return true</code>立即返回，可以更改控制流。</li>
+        <li>当我们调用<code>run()</code>时必须<code>discard</code>（丢弃）掉它的返回值。不然会出现以下错误：<code>brainfuck.nim(16, 3) Error: value of type 'bool' has to be discarded</code>这是为了防止我们忘记处理返回值。</li>
+      </ul>
+      <p>在我们继续之前，让我们思考一下 bringfuck 的运作方式。如果您以前了解过图灵机，其中一些内容可能看起来很相似。我们有一个输入字符串<code>code</code>和一个<code>char</code>序列<code>tape</code>，它们都可以在一个方向上无限增长。以下是输入字符串中可能出现的命令，除此之外的所有字符都要被忽略。</p>
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align:center">Op（操作码）</th>
+            <th>Meaning（作用）</th>
+            <th>Nim equivalent（等价的 Nim 操作）</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="text-align:center"><code>&gt;</code></td>
+            <td>右移磁带的指针</td>
+            <td><code>inc tapePos</code></td>
+          </tr>
+          <tr>
+            <td style="text-align:center"><code>&lt;</code></td>
+            <td>左移磁带的指针</td>
+            <td><code>dec tapePos</code></td>
+          </tr>
+          <tr>
+            <td style="text-align:center"><code>+</code></td>
+            <td>自增指针指向值</td>
+            <td><code>inc tape[tapePos]</code></td>
+          </tr>
+          <tr>
+            <td style="text-align:center"><code>-</code></td>
+            <td>自减指针指向值</td>
+            <td><code>dec tape[tapePos]</code></td>
+          </tr>
+          <tr>
+            <td style="text-align:center"><code>.</code></td>
+            <td>输出指针指向值</td>
+            <td><code>stdout.write tape[tapePos]</code></td>
+          </tr>
+          <tr>
+            <td style="text-align:center"><code>,</code></td>
+            <td>输入到指针指向值</td>
+            <td><code>tape[tapePos] = stdin.readChar</code></td>
+          </tr>
+          <tr>
+            <td style="text-align:center"><code>[</code></td>
+            <td>若指针指向值为<code>\0</code>，跳转到对应的<code>]</code></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td style="text-align:center"><code>]</code></td>
+            <td>若指针指向值非<code>\0</code>跳转到对应的<code>[</code></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      <p>凭借这些，bringfuck 就成为了最简单的图灵完备的编程语言之一。</p>
+      <p>前六个指令都可以使用 case 语句简单地转换为 Nim 方法。</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">run</span><span class="p">(</span><span class="n">skip</span> <span class="o">=</span> <span class="kp">false</span><span class="p">):</span> <span class="kt">bool</span> <span class="o">=</span>
+  <span class="k">case</span> <span class="n">code</span><span class="o">[</span><span class="n">codePos</span><span class="o">]</span>
+  <span class="k">of</span> <span class="sc">&#39;+&#39;</span><span class="p">:</span> <span class="n">inc</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+  <span class="k">of</span> <span class="sc">&#39;-&#39;</span><span class="p">:</span> <span class="n">dec</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+  <span class="k">of</span> <span class="sc">&#39;&gt;&#39;</span><span class="p">:</span> <span class="n">inc</span> <span class="n">tapePos</span>
+  <span class="k">of</span> <span class="sc">&#39;&lt;&#39;</span><span class="p">:</span> <span class="n">dec</span> <span class="n">tapePos</span>
+  <span class="k">of</span> <span class="sc">&#39;.&#39;</span><span class="p">:</span> <span class="n">stdout</span><span class="p">.</span><span class="n">write</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+  <span class="k">of</span> <span class="sc">&#39;,&#39;</span><span class="p">:</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span> <span class="o">=</span> <span class="n">stdin</span><span class="p">.</span><span class="n">readChar</span>
+  <span class="k">else</span><span class="p">:</span> <span class="k">discard</span>
+</code></pre>
+      </div>
+      <p>到目前为止，我们只处理输入中的单个字符，让我们将其作为一个循环来处理所有字符：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">run</span><span class="p">(</span><span class="n">skip</span> <span class="o">=</span> <span class="kp">false</span><span class="p">):</span> <span class="kt">bool</span> <span class="o">=</span>
+  <span class="k">while</span> <span class="n">tapePos</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">codePos</span> <span class="o">&lt;</span> <span class="n">code</span><span class="p">.</span><span class="n">len</span><span class="p">:</span>
+    <span class="k">case</span> <span class="n">code</span><span class="o">[</span><span class="n">codePos</span><span class="o">]</span>
+    <span class="k">of</span> <span class="sc">&#39;+&#39;</span><span class="p">:</span> <span class="n">inc</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+    <span class="k">of</span> <span class="sc">&#39;-&#39;</span><span class="p">:</span> <span class="n">dec</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+    <span class="k">of</span> <span class="sc">&#39;&gt;&#39;</span><span class="p">:</span> <span class="n">inc</span> <span class="n">tapePos</span>
+    <span class="k">of</span> <span class="sc">&#39;&lt;&#39;</span><span class="p">:</span> <span class="n">dec</span> <span class="n">tapePos</span>
+    <span class="k">of</span> <span class="sc">&#39;.&#39;</span><span class="p">:</span> <span class="n">stdout</span><span class="p">.</span><span class="n">write</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+    <span class="k">of</span> <span class="sc">&#39;,&#39;</span><span class="p">:</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span> <span class="o">=</span> <span class="n">stdin</span><span class="p">.</span><span class="n">readChar</span>
+    <span class="k">else</span><span class="p">:</span> <span class="k">discard</span>
+
+    <span class="n">inc</span> <span class="n">codePos</span>
+</code></pre>
+      </div>
+      <p>让我们尝试一个简单的程序，如下所示：</p>
+      <pre><code>$ echo &quot;&gt;+&quot; | nim -r c brainfuck
+Welcome to brainfuck
+Traceback (most recent call last)
+brainfuck.nim(26)        brainfuck
+brainfuck.nim(16)        run
+Error: unhandled exception: index out of bounds [IndexError]
+Error: execution of an external program failed
+</code></pre>
+      <p>什么玩意儿?!我们的代码崩溃了！我们做错了什么？磁带应该无限增长，但我们根本没有增加它的长度！下面一个简单的解决方案，只需在<code>case</code>语句前添加：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod">    <span class="k">if</span> <span class="n">tapePos</span> <span class="o">&gt;=</span> <span class="n">tape</span><span class="p">.</span><span class="n">len</span><span class="p">:</span>
+      <span class="n">tape</span><span class="p">.</span><span class="n">add</span> <span class="sc">&#39;</span><span class="se">\0</span><span class="sc">&#39;</span>
+</code></pre>
+      </div>
+      <p>最后两个命令<code>[</code>与<code>]</code>形成一个循环。我们也可以将其添加到代码中：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">run</span><span class="p">(</span><span class="n">skip</span> <span class="o">=</span> <span class="kp">false</span><span class="p">):</span> <span class="kt">bool</span> <span class="o">=</span>
+  <span class="k">while</span> <span class="n">tapePos</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">codePos</span> <span class="o">&lt;</span> <span class="n">code</span><span class="p">.</span><span class="n">len</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">tapePos</span> <span class="o">&gt;=</span> <span class="n">tape</span><span class="p">.</span><span class="n">len</span><span class="p">:</span>
+      <span class="n">tape</span><span class="p">.</span><span class="n">add</span> <span class="sc">&#39;</span><span class="se">\0</span><span class="sc">&#39;</span>
+
+    <span class="k">if</span> <span class="n">code</span><span class="o">[</span><span class="n">codePos</span><span class="o">]</span> <span class="o">==</span> <span class="sc">&#39;[&#39;</span><span class="p">:</span>
+      <span class="n">inc</span> <span class="n">codePos</span>
+      <span class="k">let</span> <span class="n">oldPos</span> <span class="o">=</span> <span class="n">codePos</span>
+      <span class="k">while</span> <span class="n">run</span><span class="p">(</span><span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span> <span class="o">==</span> <span class="sc">&#39;</span><span class="se">\0</span><span class="sc">&#39;</span><span class="p">):</span>
+        <span class="n">codePos</span> <span class="o">=</span> <span class="n">oldPos</span>
+    <span class="k">elif</span> <span class="n">code</span><span class="o">[</span><span class="n">codePos</span><span class="o">]</span> <span class="o">==</span> <span class="sc">&#39;]&#39;</span><span class="p">:</span>
+      <span class="k">return</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span> <span class="o">!=</span> <span class="sc">&#39;</span><span class="se">\0</span><span class="sc">&#39;</span>
+    <span class="k">elif</span> <span class="ow">not</span> <span class="n">skip</span><span class="p">:</span>
+      <span class="k">case</span> <span class="n">code</span><span class="o">[</span><span class="n">codePos</span><span class="o">]</span>
+      <span class="k">of</span> <span class="sc">&#39;+&#39;</span><span class="p">:</span> <span class="n">inc</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+      <span class="k">of</span> <span class="sc">&#39;-&#39;</span><span class="p">:</span> <span class="n">dec</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+      <span class="k">of</span> <span class="sc">&#39;&gt;&#39;</span><span class="p">:</span> <span class="n">inc</span> <span class="n">tapePos</span>
+      <span class="k">of</span> <span class="sc">&#39;&lt;&#39;</span><span class="p">:</span> <span class="n">dec</span> <span class="n">tapePos</span>
+      <span class="k">of</span> <span class="sc">&#39;.&#39;</span><span class="p">:</span> <span class="n">stdout</span><span class="p">.</span><span class="n">write</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+      <span class="k">of</span> <span class="sc">&#39;,&#39;</span><span class="p">:</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span> <span class="o">=</span> <span class="n">stdin</span><span class="p">.</span><span class="n">readChar</span>
+      <span class="k">else</span><span class="p">:</span> <span class="k">discard</span>
+
+    <span class="n">inc</span> <span class="n">codePos</span>
+</code></pre>
+      </div>
+      <p>当我们遇到<code>[</code>时我们循环递归<code>run</code>直到遇到<code>]</code>时<code>tapePos</code>指向值为<code>\0</code>。</p>
+      <p>如果您使用的是 Nim 0.11 或更高版本，则会遇到另一个问题：<code>inc</code>与<code>dec</code>对<code>char</code>的操作有溢出（和下溢）检查。这意味着，当我们自减<code>\0</code>时，会出现运行时错误！ 但是在 bringfuck 中，我们希望这样的操作可以得到<code>\255</code>。我们可以使用<code>uint8</code>类型来代替<code>char</code>类型，因为无符号整数在 Nim 中没有溢出检查。但这样做将导致我们要在<code>uint8</code>与<code>char</code>之间反复横跳。更方便的方法是定义我们自己的无溢出检查的<code>xinc</code>和<code>xdec</code>函数：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="p">{.</span><span class="n">push</span> <span class="n">overflowchecks</span><span class="p">:</span> <span class="n">off</span><span class="p">.}</span>
+<span class="k">proc </span><span class="nf">xinc</span><span class="p">(</span><span class="n">c</span><span class="p">:</span> <span class="kd">var</span> <span class="kt">char</span><span class="p">)</span> <span class="o">=</span> <span class="n">inc</span> <span class="n">c</span>
+<span class="k">proc </span><span class="nf">xdec</span><span class="p">(</span><span class="n">c</span><span class="p">:</span> <span class="kd">var</span> <span class="kt">char</span><span class="p">)</span> <span class="o">=</span> <span class="n">dec</span> <span class="n">c</span>
+<span class="p">{.</span><span class="n">pop</span><span class="p">.}</span>
+</code></pre>
+      </div>
+      <p>我们使用 Nim 的编译指示系统来禁用溢出检查，仅用于这部分代码，而不触及程序其余部分的配置。现在当然有两段 case 需要修改：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod">      <span class="k">of</span> <span class="sc">&#39;+&#39;</span><span class="p">:</span> <span class="n">xinc</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+      <span class="k">of</span> <span class="sc">&#39;-&#39;</span><span class="p">:</span> <span class="n">xdec</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+</code></pre>
+      </div>
+      <p>欧了，我们已经有一个可以跑的 brainfuck 解释器了。为了测试它，我们创建一个包含三个文件的<code>examples</code> 目录：<br>
+        <a href="https://howistart.org/posts/nim/1/examples/helloworld.b">helloworld.b</a>, <a
+          href="https://howistart.org/posts/nim/1/examples/rot13.b">rot13.b</a>,
+        <a href="https://howistart.org/posts/nim/1/examples/mandelbrot.b">mandelbrot.b</a>.
+      </p>
+      <pre><code>$ nim -r c brainfuck examples/helloworld.b
+Welcome to brainfuck
+Hello World!
+$ ./brainfuck examples/rot13.b
+Welcome to brainfuck
+You can enter anything here!
+Lbh pna ragre nalguvat urer!
+ctrl-d
+$ ./brainfuck examples/mandelbrot.b
+</code></pre>
+      <p><img src="https://howistart.org/posts/nim/1/images/mandelbrot.png" alt=""></p>
+      <p>最后一个你会注意到我们的解释器有多慢。编译时添加<code>-d:release</code>参数可以加速，但在我的机子上绘制曼德勃罗集仍然跑了差不多 90 秒。为了实现窜稀的速度，稍后我们将编译 brainfuck 到 Nim ，而不是解释它。Nim 的元编程功能非常适合这一点。</p>
+      <p>但现在让我们保持简单。我们的解释器正在工作，现在我们可以将我们的工作变成一个可复用的库。我们所要做的就是用一个大<code>proc</code>包围代码：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">interpret</span><span class="o">*</span><span class="p">(</span><span class="n">code</span><span class="p">:</span> <span class="kt">string</span><span class="p">)</span> <span class="o">=</span>
+  <span class="kd">var</span>
+    <span class="n">tape</span> <span class="o">=</span> <span class="n">newSeq</span><span class="o">[</span><span class="kt">char</span><span class="o">]</span><span class="p">()</span>
+    <span class="n">codePos</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">tapePos</span> <span class="o">=</span> <span class="mi">0</span>
+
+  <span class="k">proc </span><span class="nf">run</span><span class="p">(</span><span class="n">skip</span> <span class="o">=</span> <span class="kp">false</span><span class="p">):</span> <span class="kt">bool</span> <span class="o">=</span>
+    <span class="p">...</span>
+
+  <span class="k">discard</span> <span class="n">run</span><span class="p">()</span>
+
+<span class="k">when</span> <span class="n">isMainModule</span><span class="p">:</span>
+  <span class="kn">import</span> <span class="n">os</span>
+
+  <span class="n">echo</span> <span class="s">&#34;Welcome to brainfuck&#34;</span>
+
+  <span class="k">let</span> <span class="n">code</span> <span class="o">=</span> <span class="k">if</span> <span class="n">paramCount</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span> <span class="n">readFile</span> <span class="n">paramStr</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+             <span class="k">else</span><span class="p">:</span> <span class="n">readAll</span> <span class="n">stdin</span>
+
+  <span class="n">interpret</span> <span class="n">code</span>
+</code></pre>
+      </div>
+      <p>注意我们在这个函数的声明部分添加了一个<code>*</code>，这表示将它暴露给外部程序调用。除此之外的一切都是不可被外部程序访问的。</p>
+      <p>文件尾部的代码仍然被编译到二进制文件中。<code>when isMainModule</code>表示只有当文件是主模块时其中的代码才会被编译。快速地使用<code>nimble install</code>来安装我们的 bringfuck 库，我们就可以像下面这样在本机的任何位置调用它了。</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="kn">import</span> <span class="n">brainfuck</span>
+<span class="n">interpret</span> <span class="s">&#34;++++++++[&gt;++++[&gt;++&gt;+++&gt;+++&gt;+&lt;&lt;&lt;&lt;-]&gt;+&gt;+&gt;-&gt;&gt;+[&lt;]&lt;-]&gt;&gt;.&gt;---.+++++++..+++.&gt;&gt;.&lt;-.&lt;.+++.------.--------.&gt;&gt;+.&gt;++.&#34;</span>
+</code></pre>
+      </div>
+      <p>666！此时，我们可以与其他人共享代码，但让我们先添加一些文档：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">interpret</span><span class="o">*</span><span class="p">(</span><span class="n">code</span><span class="p">:</span> <span class="kt">string</span><span class="p">)</span> <span class="o">=</span>
+  <span class="sd">## 解释 brainfuck 的 `code` 字符串以及从 stdin 读取并返回结果到 stdout</span>
+  <span class="p">...</span>
+</code></pre>
+      </div>
+      <p><code>nim doc brainfuck</code>可以构建文档，你就可以<a
+          href="http://hookrace.net/nim-brainfuck/brainfuck.html">在线查看</a>了！</p>
+      <h2 id="metaprogramming">元编程</h2>
+      <p>正如我之前所说的，我们的解释器对于绘制曼德勃罗集的程序来说仍然很慢。让我们写一段在编译时创建 <a href="http://nim-lang.org/docs/macros.html">Nim 代码 AST（抽象语法树）</a>的代码：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="kn">import</span> <span class="n">macros</span>
+
+<span class="k">proc </span><span class="nf">compile</span><span class="p">(</span><span class="n">code</span><span class="p">:</span> <span class="kt">string</span><span class="p">):</span> <span class="n">PNimrodNode</span> <span class="p">{.</span><span class="n">compiletime</span><span class="p">.}</span> <span class="o">=</span>
+  <span class="kd">var</span> <span class="n">stmts</span> <span class="o">=</span> <span class="o">@[</span><span class="n">newStmtList</span><span class="p">()</span><span class="o">]</span>
+
+  <span class="k">template</span> <span class="n">addStmt</span><span class="p">(</span><span class="n">text</span><span class="p">):</span> <span class="n">typed</span> <span class="o">=</span>
+    <span class="n">stmts</span><span class="o">[</span><span class="n">stmts</span><span class="p">.</span><span class="n">high</span><span class="o">]</span><span class="p">.</span><span class="n">add</span> <span class="n">parseStmt</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+  <span class="n">addStmt</span> <span class="s">&#34;var tape: array[1_000_000, char]&#34;</span>
+  <span class="n">addStmt</span> <span class="s">&#34;var tapePos = 0&#34;</span>
+
+  <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">code</span><span class="p">:</span>
+    <span class="k">case</span> <span class="n">c</span>
+    <span class="k">of</span> <span class="sc">&#39;+&#39;</span><span class="p">:</span> <span class="n">addStmt</span> <span class="s">&#34;xinc tape[tapePos]&#34;</span>
+    <span class="k">of</span> <span class="sc">&#39;-&#39;</span><span class="p">:</span> <span class="n">addStmt</span> <span class="s">&#34;xdec tape[tapePos]&#34;</span>
+    <span class="k">of</span> <span class="sc">&#39;&gt;&#39;</span><span class="p">:</span> <span class="n">addStmt</span> <span class="s">&#34;inc tapePos&#34;</span>
+    <span class="k">of</span> <span class="sc">&#39;&lt;&#39;</span><span class="p">:</span> <span class="n">addStmt</span> <span class="s">&#34;dec tapePos&#34;</span>
+    <span class="k">of</span> <span class="sc">&#39;.&#39;</span><span class="p">:</span> <span class="n">addStmt</span> <span class="s">&#34;stdout.write tape[tapePos]&#34;</span>
+    <span class="k">of</span> <span class="sc">&#39;,&#39;</span><span class="p">:</span> <span class="n">addStmt</span> <span class="s">&#34;tape[tapePos] = stdin.readChar&#34;</span>
+    <span class="k">of</span> <span class="sc">&#39;[&#39;</span><span class="p">:</span> <span class="n">stmts</span><span class="p">.</span><span class="n">add</span> <span class="n">newStmtList</span><span class="p">()</span>
+    <span class="k">of</span> <span class="sc">&#39;]&#39;</span><span class="p">:</span>
+      <span class="kd">var</span> <span class="n">loop</span> <span class="o">=</span> <span class="n">newNimNode</span><span class="p">(</span><span class="n">nnkWhileStmt</span><span class="p">)</span>
+      <span class="n">loop</span><span class="p">.</span><span class="n">add</span> <span class="n">parseExpr</span><span class="p">(</span><span class="s">&#34;tape[tapePos] != &#39;</span><span class="se">\\</span><span class="s">0&#39;&#34;</span><span class="p">)</span>
+      <span class="n">loop</span><span class="p">.</span><span class="n">add</span> <span class="n">stmts</span><span class="p">.</span><span class="n">pop</span>
+      <span class="n">stmts</span><span class="o">[</span><span class="n">stmts</span><span class="p">.</span><span class="n">high</span><span class="o">]</span><span class="p">.</span><span class="n">add</span> <span class="n">loop</span>
+    <span class="k">else</span><span class="p">:</span> <span class="k">discard</span>
+
+  <span class="n">result</span> <span class="o">=</span> <span class="n">stmts</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span>
+  <span class="n">echo</span> <span class="n">result</span><span class="p">.</span><span class="n">repr</span>
+</code></pre>
+      </div>
+      <p>模板<code>addStmt</code>就是为了减少样板。我们还可以在当前使用<code>addStmt</code>的每个位置显式地编写相同的操作。（这正是模板的作用！）<code>parseStmt</code>将一段 Nim 代码从字符串转换为相应的 AST，我们将其存储在列表中。</p>
+      <p>大多数代码与解释器类似，只是我们现在不执行代码，而是生成代码，并将其添加到语句列表中。<code>[</code>与<code>]</code>更复杂：它们被转换成围绕中间代码的 while 循环。</p>
+      <p>我们在这里有点作弊，因为我们现在使用固定长度的<code>tape</code>，不再检查不足和溢出。这主要是为了简单的代码。要查看此代码的作用，最后一行的<code>echo result.repr</code>将打印我们生成的 Nim 代码。</p>
+      <p>通过在<code>static</code>块内调用它来尝试，这将在编译时强制执行：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">static</span><span class="p">:</span>
+  <span class="k">discard</span> <span class="n">compile</span> <span class="s">&#34;+&gt;+[-]&gt;,.&#34;</span>
+</code></pre>
+      </div>
+      <p>编译期间将打印生成的代码：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="kd">var</span> <span class="n">tape</span><span class="p">:</span> <span class="kt">array</span><span class="o">[</span><span class="mi">1000000</span><span class="p">,</span> <span class="kt">char</span><span class="o">]</span>
+<span class="kd">var</span> <span class="n">codePos</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="kd">var</span> <span class="n">tapePos</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">xinc</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+<span class="n">inc</span> <span class="n">tapePos</span>
+<span class="n">xinc</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+<span class="k">while</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span> <span class="o">!=</span> <span class="sc">&#39;</span><span class="se">\0</span><span class="sc">&#39;</span><span class="p">:</span>
+  <span class="n">xdec</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+<span class="n">inc</span> <span class="n">tapePos</span>
+<span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span> <span class="o">=</span> <span class="n">stdin</span><span class="p">.</span><span class="n">readChar</span>
+<span class="n">stdout</span><span class="p">.</span><span class="n">write</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+</code></pre>
+      </div>
+      <p>通常用于编写宏的是<code>dumpTree</code>宏，它打印一段代码的 AST（实际的 AST，而不是字符串），例如：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="kn">import</span> <span class="n">macros</span>
+
+<span class="n">dumpTree</span><span class="p">:</span>
+  <span class="k">while</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span> <span class="o">!=</span> <span class="sc">&#39;</span><span class="se">\0</span><span class="sc">&#39;</span><span class="p">:</span>
+    <span class="n">inc</span> <span class="n">tapePos</span>
+</code></pre>
+      </div>
+      <p>这打印了以下树：</p>
+      <pre><code>StmtList
+  WhileStmt
+    Infix
+      Ident !&quot;!=&quot;
+      BracketExpr
+        Ident !&quot;tape&quot;
+        Ident !&quot;tapePos&quot;
+      CharLit 0
+    StmtList
+      Command
+        Ident !&quot;inc&quot;
+        Ident !&quot;tapePos&quot;
+</code></pre>
+      <p>这就是我知道我们需要<code>StmtList</code>的原因。在 Nim 中进行元编程时，通常最好使用<code>dumpTree</code>并打印出要生成的代码的 AST。</p>
+      <p>宏可用于将生成的代码直接插入程序：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">macro</span> <span class="n">compileString</span><span class="o">*</span><span class="p">(</span><span class="n">code</span><span class="p">:</span> <span class="kt">string</span><span class="p">):</span> <span class="n">typed</span> <span class="o">=</span>
+  <span class="sd">## Compiles the brainfuck `code` string into Nim code that reads from stdin</span>
+  <span class="sd">## and writes to stdout.</span>
+  <span class="n">compile</span> <span class="n">code</span><span class="p">.</span><span class="n">strval</span>
+
+<span class="k">macro</span> <span class="n">compileFile</span><span class="o">*</span><span class="p">(</span><span class="n">filename</span><span class="p">:</span> <span class="kt">string</span><span class="p">):</span> <span class="n">typed</span> <span class="o">=</span>
+  <span class="sd">## Compiles the brainfuck code read from `filename` at compile time into Nim</span>
+  <span class="sd">## code that reads from stdin and writes to stdout.</span>
+  <span class="n">compile</span> <span class="n">staticRead</span><span class="p">(</span><span class="n">filename</span><span class="p">.</span><span class="n">strval</span><span class="p">)</span>
+</code></pre>
+      </div>
+      <p>现在，我们可以轻松地将绘制曼德勃罗集的程序编译成 Nim 了：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">mandelbrot</span> <span class="o">=</span> <span class="n">compileFile</span> <span class="s">&#34;examples/mandelbrot.b&#34;</span>
+
+<span class="n">mandelbrot</span><span class="p">()</span>
+</code></pre>
+      </div>
+      <p>使用完全优化进行编译现在需要相当长的时间（大约4秒），因为绘制曼德勃罗集的程序非常庞大，GCC需要一些时间来优化它。作为回报，程序仅在1秒内运行：</p>
+      <pre><code>$ nim -d:release c brainfuck
+$ ./brainfuck
+</code></pre>
+      <h2 id="compiler-settings">编译器设置</h2>
+      <p>默认情况下，Nim 使用 GCC 编译其中间 C 代码，但是通常 clang 的编译速度更快，甚至可能产生更高效的代码。这总是值得尝试的。要使用 clang 进行编译，可以使用<code>nim -d:release --cc:clang c brainfuck</code>。如果你想默认使用 clang 编译<code>brainfuck.nim</code>，创建一个<code>brainfuck.nim.cfg</code>文件并写入<code>cc = clang</code>。要更改全局默认后端编译器（C 编译器），可以使用同样的方法编辑 Nim 安装目录中的<code>config/nim.cfg</code>文件。
+      </p>
+      <p>对默认编译器的修改可能导致 Nim 发出我们并不在意的提示信息，我们可以通过在 Nim 的<code>config/nim.cfg</code>文件中设置<code>hints = off</code>。另一个更加烦人的警告是当你把<code>l</code>（小写<code>L</code>）作为标识符时，Nim 它太像数字<code>1</code>了：</p>
+      <pre><code>a.nim(1, 4) Warning: 'l' should not be used as an identifier; may look like '1' (one) [SmallLshouldNotBeUsed]
+</code></pre>
+      <p>如果你不喜欢这个，可以使用<code>warning[SmallLshouldNotBeUsed] = off</code>来关闭它。</p>
+      <p>Nim的另一个优点是我们可以使用 C 的调试器，比如 GDB。
+        例如使用<code>nim c --linedir:on --debuginfo c brainfuck</code>进行编译，这样就可以用
+        <code>gdb ./brainfuck</code>来进行调试了。
+      </p>
+      <h2 id="command-line-argument-parsing">命令行参数解析</h2>
+      <p>到目前为止，我们一直在手动解析命令行参数。但我们已经安装了 <a href="https://github.com/docopt/docopt.nim">docopt.nim</a> 库，我们可以直接使用它：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">when</span> <span class="n">isMainModule</span><span class="p">:</span>
+  <span class="kn">import</span> <span class="n">docopt</span><span class="p">,</span> <span class="n">tables</span><span class="p">,</span> <span class="n">strutils</span>
+
+  <span class="k">proc </span><span class="nf">mandelbrot</span> <span class="o">=</span> <span class="n">compileFile</span><span class="p">(</span><span class="s">&#34;examples/mandelbrot.b&#34;</span><span class="p">)</span>
+
+  <span class="k">let</span> <span class="n">doc</span> <span class="o">=</span> <span class="s">&#34;&#34;&#34;
+</span><span class="s">brainfuck
+</span><span class="s">
+</span><span class="s">Usage:
+</span><span class="s">  brainfuck mandelbrot
+</span><span class="s">  brainfuck interpret [&lt;file.b&gt;]
+</span><span class="s">  brainfuck (-h | --help)
+</span><span class="s">  brainfuck (-v | --version)
+</span><span class="s">
+</span><span class="s">Options:
+</span><span class="s">  -h --help     Show this screen.
+</span><span class="s">  -v --version  Show version.
+</span><span class="s">&#34;&#34;&#34;</span>
+
+  <span class="k">let</span> <span class="n">args</span> <span class="o">=</span> <span class="n">docopt</span><span class="p">(</span><span class="n">doc</span><span class="p">,</span> <span class="n">version</span> <span class="o">=</span> <span class="s">&#34;brainfuck 1.0&#34;</span><span class="p">)</span>
+
+  <span class="k">if</span> <span class="n">args</span><span class="o">[</span><span class="s">&#34;mandelbrot&#34;</span><span class="o">]</span><span class="p">:</span>
+    <span class="n">mandelbrot</span><span class="p">()</span>
+
+  <span class="k">elif</span> <span class="n">args</span><span class="o">[</span><span class="s">&#34;interpret&#34;</span><span class="o">]</span><span class="p">:</span>
+    <span class="k">let</span> <span class="n">code</span> <span class="o">=</span> <span class="k">if</span> <span class="n">args</span><span class="o">[</span><span class="s">&#34;&lt;file.b&gt;&#34;</span><span class="o">]</span><span class="p">:</span> <span class="n">readFile</span><span class="p">(</span><span class="o">$</span><span class="n">args</span><span class="o">[</span><span class="s">&#34;&lt;file.b&gt;&#34;</span><span class="o">]</span><span class="p">)</span>
+               <span class="k">else</span><span class="p">:</span> <span class="n">readAll</span> <span class="n">stdin</span>
+
+    <span class="n">interpret</span><span class="p">(</span><span class="n">code</span><span class="p">)</span>
+</code></pre>
+      </div>
+      <p>使用 docopt 的优势在于文档即规范。使用起来 so easy：</p>
+      <pre><code>$ nimble install
+...
+brainfuck installed successfully.
+$ brainfuck -h
+brainfuck
+
+Usage:
+  brainfuck mandelbrot
+  brainfuck interpret [&lt;file.b&gt;]
+  brainfuck (-h | --help)
+  brainfuck (-v | --version)
+
+Options:
+  -h --help     Show this screen.
+  -v --version  Show version.
+$ brainfuck interpret examples/helloworld.b
+Hello World!
+</code></pre>
+      <h2 id="refactoring">重构</h2>
+      <p>由于我们的项目正在增长，我们将主要源代码转移到<code>src</code>目录并添加<code>tests</code>目录，我们很快就会需要它。最终的目录结构如下：</p>
+      <pre><code>$ tree
+.
+├── brainfuck.nimble
+├── examples
+│   ├── helloworld.b
+│   ├── mandelbrot.b
+│   └── rot13.b
+├── license.txt
+├── readme.md
+├── src
+│   └── brainfuck.nim
+└── tests
+    ├── all.nim
+    ├── compile.nim
+    ├── interpret.nim
+    └── nim.cfg
+</code></pre>
+      <p>这还要求我们更改 nimble 文件：</p>
+      <pre><code>srcDir = &quot;src&quot;
+bin    = @[&quot;brainfuck&quot;]
+</code></pre>
+      <p>为了提高代码的可复用性，我们将其重构。主要关注点就是我们总是从 stdin 读取，然后写入 stdout。</p>
+      <p>我们扩展了<code>interpret</code>过程，以接收输入和输出流，而不是仅接受<code>code: string</code>作为其参数。这使用提供了<code>FileStream</code>和<code>StringStream</code>的 <a href="http://nim-lang.org/docs/streams.html">streams 模块</a>：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="sd">## :作者: Dennis Felsing</span>
+<span class="sd">##</span>
+<span class="sd">## 该模块实现了 brainfuck 语言的解释器</span>
+<span class="sd">## 以及将 brainfuck 编译成高效的 Nim 代码的编译器。</span>
+<span class="sd">##</span>
+<span class="sd">## 例:</span>
+<span class="sd">##</span>
+<span class="sd">## .. 语言:: nim</span>
+<span class="sd">##   import brainfuck, streams</span>
+<span class="sd">##</span>
+<span class="sd">##   interpret(&#34;++++++++[&gt;++++[&gt;++&gt;+++&gt;+++&gt;+&lt;&lt;&lt;&lt;-]&gt;+&gt;+&gt;-&gt;&gt;+[&lt;]&lt;-]&gt;&gt;.&gt;---.+++++++..+++.&gt;&gt;.&lt;-.&lt;.+++.------.--------.&gt;&gt;+.&gt;++.&#34;)</span>
+<span class="sd">##   # 打印 &#34;Hello World!&#34;</span>
+<span class="sd">##</span>
+<span class="sd">##   proc mandelbrot = compileFile(&#34;examples/mandelbrot.b&#34;)</span>
+<span class="sd">##   mandelbrot() # 绘制曼德勃罗集</span>
+
+<span class="kn">import</span> <span class="n">streams</span>
+
+<span class="k">proc </span><span class="nf">interpret</span><span class="o">*</span><span class="p">(</span><span class="n">code</span><span class="p">:</span> <span class="kt">string</span><span class="p">;</span> <span class="n">input</span><span class="p">,</span> <span class="n">output</span><span class="p">:</span> <span class="n">Stream</span><span class="p">)</span> <span class="o">=</span>
+  <span class="sd">## 解释 brainfuck 的 `code` 字符串以及从 `input` 读取并写入到 `output`</span>
+  <span class="sd">##</span>
+  <span class="sd">## 例:</span>
+  <span class="sd">##</span>
+  <span class="sd">## .. 语言:: nim</span>
+  <span class="sd">##   var inpStream = newStringStream(&#34;Hello World!\n&#34;)</span>
+  <span class="sd">##   var outStream = newFileStream(stdout)</span>
+  <span class="sd">##   interpret(readFile(&#34;examples/rot13.b&#34;), inpStream, outStream)</span>
+</code></pre>
+      </div>
+      <p>我也添加了全面的文档，其中包括示例代码。你可以查看<a href="http://hookrace.net/nim-brainfuck/brainfuck.html">完整文档</a>。</p>
+      <p>大多数代码保持不变，除了处理 bringfuck 操作<code>.</code>和<code>,</code>，现在使用<code>output</code>代替<code>stdout</code>，使用<code>input</code>代替<code>stdin</code>：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod">        <span class="k">of</span> <span class="sc">&#39;.&#39;</span><span class="p">:</span> <span class="n">output</span><span class="p">.</span><span class="n">write</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span>
+        <span class="k">of</span> <span class="sc">&#39;,&#39;</span><span class="p">:</span> <span class="n">tape</span><span class="o">[</span><span class="n">tapePos</span><span class="o">]</span> <span class="o">=</span> <span class="n">input</span><span class="p">.</span><span class="n">readCharEOF</span>
+</code></pre>
+      </div>
+      <p>为什么我们要使用这个奇怪的<code>readCharEOF</code>而不是<code>readChar</code>呢？在大多数操作系统上<code>EOF</code>（end of file，文件结束）代表<code>-1</code>。我们的 bringfuck 语言巧妙地运用了它。这意味着我们的 bringfuck 并不能在所有系统上运行。同时，streams 模块力求独立于平台，因此当我们读取到<code>EOF</code>时它将返回<code>0</code>。我们使用<code>readCharEOF</code>以显眼的方式将其转换为 brainfuck 的<code>-1</code>：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">readCharEOF</span><span class="o">*</span><span class="p">(</span><span class="n">input</span><span class="p">:</span> <span class="n">Stream</span><span class="p">):</span> <span class="kt">char</span> <span class="o">=</span>
+  <span class="n">result</span> <span class="o">=</span> <span class="n">input</span><span class="p">.</span><span class="n">readChar</span>
+  <span class="k">if</span> <span class="n">result</span> <span class="o">==</span> <span class="sc">&#39;</span><span class="se">\0</span><span class="sc">&#39;</span><span class="p">:</span> <span class="c"># Streams 读取到 EOF 时返回的 1</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="sc">&#39;</span><span class="se">\255</span><span class="sc">&#39;</span>  <span class="c"># BF 假设 EOF 是 -1</span>
+</code></pre>
+      </div>
+      <p>此时，您可能会注意到Nim中标识符声明的顺序很重要。如果您在<code>interpret</code>下面声明<code>readCharEOF</code>，则不能在<code>interpret</code>中使用它。我个人力求遵循这一点，因为它在每个模块中创建了从简单代码到更复杂代码的层次结构。如果您仍然想规避这一点，请通过在<code>interpret</code>上方添加此声明来拆分<code>readCharEOF</code>的声明和定义：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">readCharEOF</span><span class="o">*</span><span class="p">(</span><span class="n">input</span><span class="p">:</span> <span class="n">Stream</span><span class="p">):</span> <span class="kt">char</span>
+</code></pre>
+      </div>
+      <p>像以前一样使用解释器的代码同样 easy：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">interpret</span><span class="o">*</span><span class="p">(</span><span class="n">code</span><span class="p">,</span> <span class="n">input</span><span class="p">:</span> <span class="kt">string</span><span class="p">):</span> <span class="kt">string</span> <span class="o">=</span>
+  <span class="sd">## 解释 brainfuck 的 `code` 字符串以及从 `input` 读取并直接返回结果</span>
+  <span class="kd">var</span> <span class="n">outStream</span> <span class="o">=</span> <span class="n">newStringStream</span><span class="p">()</span>
+  <span class="n">interpret</span><span class="p">(</span><span class="n">code</span><span class="p">,</span> <span class="n">input</span><span class="p">.</span><span class="n">newStringStream</span><span class="p">,</span> <span class="n">outStream</span><span class="p">)</span>
+  <span class="n">result</span> <span class="o">=</span> <span class="n">outStream</span><span class="p">.</span><span class="n">data</span>
+
+<span class="k">proc </span><span class="nf">interpret</span><span class="o">*</span><span class="p">(</span><span class="n">code</span><span class="p">:</span> <span class="kt">string</span><span class="p">)</span> <span class="o">=</span>
+  <span class="sd">## 解释 brainfuck 的 `code` 字符串以及从 stdin 读取并返回结果到 stdout</span>
+  <span class="n">interpret</span><span class="p">(</span><span class="n">code</span><span class="p">,</span> <span class="n">stdin</span><span class="p">.</span><span class="n">newFileStream</span><span class="p">,</span> <span class="n">stdout</span><span class="p">.</span><span class="n">newFileStream</span><span class="p">)</span>
+</code></pre>
+      </div>
+      <p>现在可以使用<code>interpret</code>函数返回字符串。这对于以后的测试很重要：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">let</span> <span class="n">res</span> <span class="o">=</span> <span class="n">interpret</span><span class="p">(</span><span class="n">readFile</span><span class="p">(</span><span class="s">&#34;examples/rot13.b&#34;</span><span class="p">),</span> <span class="s">&#34;Hello World!</span><span class="se">\n</span><span class="s">&#34;</span><span class="p">)</span>
+<span class="n">interpret</span><span class="p">(</span><span class="n">readFile</span><span class="p">(</span><span class="s">&#34;examples/rot13.b&#34;</span><span class="p">))</span> <span class="c"># 输出到 stdout</span>
+</code></pre>
+      </div>
+      <p>对于编译器来说，清理有点复杂。首先，我们必须将<code>input</code>和<code>output</code>作为字符串，这样使用这个函数的人就可以使用他们想要的任何流：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">compile</span><span class="p">(</span><span class="n">code</span><span class="p">,</span> <span class="n">input</span><span class="p">,</span> <span class="n">output</span><span class="p">:</span> <span class="kt">string</span><span class="p">):</span> <span class="n">PNimrodNode</span> <span class="p">{.</span><span class="n">compiletime</span><span class="p">.}</span> <span class="o">=</span>
+</code></pre>
+      </div>
+      <p>要将输入和输出流初始化为传递的字符串，还需要两个附加语句：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod">  <span class="n">addStmt</span> <span class="s">&#34;var inpStream = &#34;</span> <span class="o">&amp;</span> <span class="n">input</span>
+  <span class="n">addStmt</span> <span class="s">&#34;var outStream = &#34;</span> <span class="o">&amp;</span> <span class="n">output</span>
+</code></pre>
+      </div>
+      <p>当然，现在我们必须使用<code>outStream</code>和<code>inpStream</code>而不是 stdout 和 stdin，以及使用<code>readCharEOF</code>而不是<code>readChar</code>。注意，我们可以从解释器直接调用<code>readCharEOF</code>函数，而无需重复代码：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod">    <span class="k">of</span> <span class="sc">&#39;.&#39;</span><span class="p">:</span> <span class="n">addStmt</span> <span class="s">&#34;outStream.write tape[tapePos]&#34;</span>
+    <span class="k">of</span> <span class="sc">&#39;,&#39;</span><span class="p">:</span> <span class="n">addStmt</span> <span class="s">&#34;tape[tapePos] = inpStream.readCharEOF&#34;</span>
+</code></pre>
+      </div>
+      <p>我们还添加了一条语句，如果我们库的用户错误地使用了它，该语句将中止编译，并显示一条非常 amazing 的错误消息：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod">  <span class="n">addStmt</span> <span class="s">&#34;&#34;&#34;
+</span><span class="s">    when not compiles(newStringStream()):
+</span><span class="s">      static:
+</span><span class="s">        quit(&#34;Error: Import the streams module to compile brainfuck code&#34;, 1)
+</span><span class="s">  &#34;&#34;&#34;</span>
+</code></pre>
+      </div>
+      <p>要将新的<code>compile</code>函数连接到再次使用 stdout 和 stdin 的<code>compileFile</code>宏，我们可以这样写：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">macro</span> <span class="n">compileFile</span><span class="o">*</span><span class="p">(</span><span class="n">filename</span><span class="p">:</span> <span class="kt">string</span><span class="p">):</span> <span class="n">typed</span> <span class="o">=</span>
+  <span class="n">compile</span><span class="p">(</span><span class="n">staticRead</span><span class="p">(</span><span class="n">filename</span><span class="p">.</span><span class="n">strval</span><span class="p">),</span>
+    <span class="s">&#34;stdin.newFileStream&#34;</span><span class="p">,</span> <span class="s">&#34;stdout.newFileStream&#34;</span><span class="p">)</span>
+</code></pre>
+      </div>
+      <p>要从输入字符串读取并写回输出字符串，可以执行以下操作：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">macro</span> <span class="n">compileFile</span><span class="o">*</span><span class="p">(</span><span class="n">filename</span><span class="p">:</span> <span class="kt">string</span><span class="p">;</span> <span class="n">input</span><span class="p">,</span> <span class="n">output</span><span class="p">:</span> <span class="n">untyped</span><span class="p">):</span> <span class="n">typed</span> <span class="o">=</span>
+  <span class="n">result</span> <span class="o">=</span> <span class="n">compile</span><span class="p">(</span><span class="n">staticRead</span><span class="p">(</span><span class="n">filename</span><span class="p">.</span><span class="n">strval</span><span class="p">),</span>
+    <span class="s">&#34;newStringStream(&#34;</span> <span class="o">&amp;</span> <span class="o">$</span><span class="n">input</span> <span class="o">&amp;</span> <span class="s">&#34;)&#34;</span><span class="p">,</span> <span class="s">&#34;newStringStream()&#34;</span><span class="p">)</span>
+  <span class="n">result</span><span class="p">.</span><span class="n">add</span> <span class="n">parseStmt</span><span class="p">(</span><span class="o">$</span><span class="n">output</span> <span class="o">&amp;</span> <span class="s">&#34; = outStream.data&#34;</span><span class="p">)</span>
+</code></pre>
+      </div>
+      <p>这段笨拙的代码允许我们像这样编写一个编译用的<code>rot13</code>函数，将<code>input</code>字符串和<code>result</code>组合到编译的程序：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">proc </span><span class="nf">rot13</span><span class="p">(</span><span class="n">input</span><span class="p">:</span> <span class="kt">string</span><span class="p">):</span> <span class="kt">string</span> <span class="o">=</span>
+  <span class="n">compileFile</span><span class="p">(</span><span class="s">&#34;../examples/rot13.b&#34;</span><span class="p">,</span> <span class="n">input</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+<span class="n">echo</span> <span class="n">rot13</span><span class="p">(</span><span class="s">&#34;Hello World!</span><span class="se">\n</span><span class="s">&#34;</span><span class="p">)</span>
+</code></pre>
+      </div>
+      <p>方便起见我对<code>compileString</code>做了同样的操作。你可以在 <a href="https://github.com/def-/nim-brainfuck/blob/master/src/brainfuck.nim">Github</a> 查看<code>brainfuck.nim</code>的完整代码。</p>
+      <h2 id="testing">测试</h2>
+      <p>在 Nim 中测试代码有两种主要方法，本文将介绍这两种方法。对于小块的代码，您可以在文件末尾添加<code>when isMainModule</code>语句并在其中使用<code>assert</code>断言语句进行调试。这确保了当模块用作库时不会执行测试代码。</p>
+      <p>在Nim中，可以使用<code>--assertions:off</code>关闭常规断言，这在编译发布版本时 Nim 会自动设置。因此，我们使用<code>doAssert</code>语句而不是<code>assert</code>语句，这样即使在发布版本中也不会对其进行优化。您可以在许多标准库模块的末尾找到这样的测试：
+      </p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="k">when</span> <span class="n">isMainModule</span><span class="p">:</span>
+  <span class="n">doAssert</span> <span class="n">align</span><span class="p">(</span><span class="s">&#34;abc&#34;</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#34; abc&#34;</span>
+  <span class="n">doAssert</span> <span class="n">align</span><span class="p">(</span><span class="s">&#34;a&#34;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#34;a&#34;</span>
+  <span class="n">doAssert</span> <span class="n">align</span><span class="p">(</span><span class="s">&#34;1232&#34;</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#34; 1232&#34;</span>
+  <span class="n">doAssert</span> <span class="n">align</span><span class="p">(</span><span class="s">&#34;1232&#34;</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="sc">&#39;#&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#34;##1232&#34;</span>
+</code></pre>
+      </div>
+      <p>对于更大的项目使用 <a href="http://nim-lang.org/docs/unittest.html">unittest 模块</a>更加方便。</p>
+      <p>我们将测试分为<code>tests/</code>目录中的3个文件：</p>
+      <p><code>tests/interpret.nim</code>用于测试解释器。我们定义了一个新的测试模块，包含两个测试部分，每个测试部分测试不同的输入并检查输出：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="kn">import</span> <span class="n">unittest</span><span class="p">,</span> <span class="n">brainfuck</span>
+
+<span class="n">suite</span> <span class="s">&#34;brainfuck interpreter&#34;</span><span class="p">:</span>
+  <span class="n">test</span> <span class="s">&#34;interpret helloworld&#34;</span><span class="p">:</span>
+    <span class="k">let</span> <span class="n">helloworld</span> <span class="o">=</span> <span class="n">readFile</span><span class="p">(</span><span class="s">&#34;examples/helloworld.b&#34;</span><span class="p">)</span>
+    <span class="n">check</span> <span class="n">interpret</span><span class="p">(</span><span class="n">helloworld</span><span class="p">,</span> <span class="n">input</span> <span class="o">=</span> <span class="s">&#34;&#34;</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#34;Hello World!</span><span class="se">\n</span><span class="s">&#34;</span>
+
+  <span class="n">test</span> <span class="s">&#34;interpret rot13&#34;</span><span class="p">:</span>
+    <span class="k">let</span> <span class="n">rot13</span> <span class="o">=</span> <span class="n">readFile</span><span class="p">(</span><span class="s">&#34;examples/rot13.b&#34;</span><span class="p">)</span>
+    <span class="k">let</span> <span class="n">conv</span> <span class="o">=</span> <span class="n">interpret</span><span class="p">(</span><span class="n">rot13</span><span class="p">,</span> <span class="s">&#34;How I Start</span><span class="se">\n</span><span class="s">&#34;</span><span class="p">)</span>
+    <span class="n">check</span> <span class="n">conv</span> <span class="o">==</span> <span class="s">&#34;Ubj V Fgneg</span><span class="se">\n</span><span class="s">&#34;</span>
+    <span class="n">check</span> <span class="n">interpret</span><span class="p">(</span><span class="n">rot13</span><span class="p">,</span> <span class="n">conv</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#34;How I Start</span><span class="se">\n</span><span class="s">&#34;</span>
+</code></pre>
+      </div>
+      <p>类似的，<code>tests/compile.nim</code>用于测试编译器：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-nimrod" data-lang="nimrod"><span class="kn">import</span> <span class="n">unittest</span><span class="p">,</span> <span class="n">brainfuck</span><span class="p">,</span> <span class="n">streams</span>
+
+<span class="n">suite</span> <span class="s">&#34;brainfuck compiler&#34;</span><span class="p">:</span>
+  <span class="n">test</span> <span class="s">&#34;compile helloworld&#34;</span><span class="p">:</span>
+    <span class="k">proc </span><span class="nf">helloworld</span><span class="p">:</span> <span class="kt">string</span> <span class="o">=</span>
+      <span class="n">compileFile</span><span class="p">(</span><span class="s">&#34;../examples/helloworld.b&#34;</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+    <span class="n">check</span> <span class="n">helloworld</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#34;Hello World!</span><span class="se">\n</span><span class="s">&#34;</span>
+
+  <span class="n">test</span> <span class="s">&#34;compile rot13&#34;</span><span class="p">:</span>
+    <span class="k">proc </span><span class="nf">rot13</span><span class="p">(</span><span class="n">input</span><span class="p">:</span> <span class="kt">string</span><span class="p">):</span> <span class="kt">string</span> <span class="o">=</span>
+      <span class="n">compileFile</span><span class="p">(</span><span class="s">&#34;../examples/rot13.b&#34;</span><span class="p">,</span> <span class="n">input</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+    <span class="k">let</span> <span class="n">conv</span> <span class="o">=</span> <span class="n">rot13</span><span class="p">(</span><span class="s">&#34;How I Start</span><span class="se">\n</span><span class="s">&#34;</span><span class="p">)</span>
+    <span class="n">check</span> <span class="n">conv</span> <span class="o">==</span> <span class="s">&#34;Ubj V Fgneg</span><span class="se">\n</span><span class="s">&#34;</span>
+    <span class="n">check</span> <span class="n">rot13</span><span class="p">(</span><span class="n">conv</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#34;How I Start</span><span class="se">\n</span><span class="s">&#34;</span>
+</code></pre>
+      </div>
+      <p>注意，我们在调用编译器时使用的是<code>../examples/</code>，而不是像调用解释器时使用的<code>examples/</code>。这是因为编译器使用的<code>staticRead</code>是将调用它的程序所在路径作为起始路径的，也就是<code>tests/</code>。</p>
+      <p>要一起执行这两个测试，我们只需使用<code>nimble test</code>，它会自动构建并执行<code>tests</code>目录中的源文件：</p>
+      <pre><code>$ nimble test
+  Executing task test in /home/d067158/git/nim-brainfuck/brainfuck.nimble
+  Verifying dependencies for brainfuck@1.1
+      Info: Dependency on docopt@>= 0.1.0&gt;= 0.1.0 already satisfied
+  Verifying dependencies for docopt@0.6.5
+  Compiling /home/d067158/git/nim-brainfuck/tests/compile.nim (from package brainfuck) using c backend
+Hint: used config file '/media/nim/config/nim.cfg' [Conf]
+
+[Suite] brainfuck compiler
+  [OK] compile helloworld
+  [OK] compile rot13
+   Success: Execution finished
+  Verifying dependencies for brainfuck@1.1
+      Info: Dependency on docopt@>= 0.1.0&gt;= 0.1.0 already satisfied
+  Verifying dependencies for docopt@0.6.5[email&#160;protected]</a>
+  Compiling /home/d067158/git/nim-brainfuck/tests/interpret.nim (from package brainfuck) using c backend
+Hint: used config file '/media/nim/config/nim.cfg' [Conf]
+
+[Suite] brainfuck interpreter
+  [OK] interpret helloworld
+  [OK] interpret rot13
+   Success: Execution finished
+   Success: All tests passed
+</code></pre>
+      <p>我们的库变得非常 Amazing 了！这样我们就有了一个功能齐全的库、二进制文件和测试框架。</p>
+      <p>是时候在 Github 上发布<a href="https://github.com/def-/nim-brainfuck">所有内容</a>了，并提交一个拉取请求，让<code>brainfuck</code>包含在 <a href="https://github.com/nim-lang/packages">nimble packages</a> 中了。一旦软件包被接受，您可以在<a href="http://nim-lang.org/docs/lib.html#nimble">官方列表</a>中找到它，并使用 nimble 搜索和安装：</p>
+      <pre><code>$ nimble search brainfuck
+brainfuck:
+  url:         https://github.com/def-/nim-brainfuck.git (git)
+  tags:        library, binary, app, interpreter, compiler, language
+  description: A brainfuck interpreter and compiler
+  license:     MIT
+  website:     https://github.com/def-/nim-brainfuck
+$ nimble install brainfuck
+</code></pre>
+      <h2 id="continuous-integration">自动更新 Nim</h2>
+      <p><a href="https://circleci.com/">CircleCI</a> 可实现 Nim 的自动更新，以便每当 Nim 更新时自动编译和运行我们的测试并推送到 Github。由于 CircleCI 并不了解 Nim 本身，我们必须教它如何引导编译器：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-markdown" data-lang="markdown">dependencies:
+  override:
+    <span class="k">-</span> |
+        if [ ! -x ~/nim/bin/nim ]; then
+          git clone -b devel --depth 1 https://github.com/nim-lang/Nim ~/nim/
+          git clone --depth 1 https://github.com/nim-lang/csources ~/nim/csources/
+          cd ~/nim/csources; sh build.sh; cd ..; rm -rf csources
+          ln -fs ~/nim/bin/nim ~/bin/nim
+          bin/nim c koch; ./koch boot -d:release; ./koch nimble
+          ln -fs ~/nim/bin/nimble ~/bin/nimble
+        else
+          cd ~/nim; git fetch origin
+          git merge FETCH_HEAD | grep &#34;Already up-to-date&#34; || (bin/nim c koch; ./koch boot -d:release; ./koch nimble)
+        fi
+
+  cache_directories:
+    <span class="k">-</span> &#34;~/bin/&#34;
+    <span class="k">-</span> &#34;~/nim/&#34;
+    <span class="k">-</span> &#34;~/.nimble/&#34;
+
+compile:
+  override:
+    <span class="k">-</span> nimble build -y
+</code></pre>
+      </div>
+      <p>这会自动使编译器保持最新版本。如果你想使用最近发布的 Nim 版本，而不是开发版本的，使用<code>master</code>分支而不是<code>devel</code>分支进行<code>git clone</code>。现在就可以直接运行测试了：
+      </p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-markdown" data-lang="markdown">test:
+  override:
+    <span class="k">-</span> nimble test -y
+</code></pre>
+      </div>
+      <p>构建状态徽章<a href="https://circleci.com/gh/def-/nim-brainfuck"><img
+            src="https://circleci.com/gh/def-/nim-brainfuck.png" alt="BuildStatus"></a>
+        可以像这样添加到<code>readme.md</code>中：</p>
+      <div class="highlight">
+        <pre class="chroma"><code class="language-markdown" data-lang="markdown"><span class="gh"># Brainfuck for Nim [![Build Status](https://circleci.com/gh/def-/nim-brainfuck.png)](https://circleci.com/gh/def-/nim-brainfuck)
+</span></code></pre>
+      </div>
+      <p>再次查看 <a href="https://github.com/def-/nim-brainfuck">Github 页面</a>以获得最终结果，并查看 <a href="https://circleci.com/gh/def-/nim-brainfuck">CircleCI 页面</a>以获得<a href="https://circleci.com/gh/def-/nim-brainfuck/27">实际构建</a>。</p>
+      <h2 id="conclusion">写在最后</h2>
+      <p>我们的 Nim 之旅到此为止，希望你喜欢它并且像我一样发现了它的乐趣所在。</p>
+      <p>如果你还想进一步了解 Nim，我最近写了<a href="http://hookrace.net/blog/what-is-special-about-nim/">《What is special about
+          Nim?》</a>与<a href="http://hookrace.net/blog/what-makes-nim-practical/">《What makes Nim practical?》</a>，并且有<a
+          href="https://github.com/def-/nim-unsorted">“extensive collection of small programs”</a>。</p>
+      <p>如果你想以更标准的方式来入坑 Nim，<a href="http://nim-lang.org/docs/tut1.html">《Official Tutorial》</a>与<a
+          href="https://nim-by-example.github.io/">《Nim by Example》</a>可以指导你。</p>
+      <p><a href="http://nim-lang.org/community.html">“Nim community”</a>实在太友善且乐于助人了，谢谢为本文档捉虫与提意见的每一位，特别鸣谢 Flaviu
+        Tamas，Andreas Rumpf 以及 Dominik Picheta。你们真的，我哭死。</p>
+      <p>译者注：感谢原文作者的支持，原文请到 <a href="https://howistart.org/posts/nim/1/index.html">How I Start</a>。<br>同时，本文档的翻译仍然有许多不足，出于缺少 Nim 的中文资料我只能对一些词语使用直译。<br>*转载请注明作者及译者</p>
+    </div>
+    <div class="pagination"><a href="#" class="top">Top</a></div>
+  </main>
+  <style>
+    html,
+    img {
+      filter: invert(100%)
+    }
+
+    * {
+      -webkit-box-sizing: border-box;
+      -moz-box-sizing: border-box;
+      box-sizing: border-box;
+      line-height: 1.5
+    }
+
+    html,
+    body {
+      color: #555;
+      background-color: #fff;
+      margin: 0;
+      padding: 0
+    }
+
+    html {
+      font-family: libre baskerville, times new roman, Times, serif;
+      font-size: 14px;
+      overflow-y: scroll
+    }
+
+    @media(min-width:600px) {
+      html {
+        font-size: 16px
+      }
+    }
+
+    body {
+      -webkit-text-size-adjust: 100%
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      color: #353535;
+      font-family: helvetica neue, segoe ui, Helvetica, Arial, sans-serif;
+      line-height: normal
+    }
+
+    a {
+      color: #4a9ae1;
+      text-decoration: none
+    }
+
+    blockquote {
+      border-left: .25rem solid #e5e5e5;
+      color: #979797;
+      margin: .8rem 0;
+      padding: .5rem 1rem
+    }
+
+    blockquote p:last-child {
+      margin-bottom: 0
+    }
+
+    @media(min-width:600px) {
+      blockquote {
+        padding: 0 5rem 0 1.25rem
+      }
+    }
+
+    img {
+      display: block;
+      margin: 0 0 1rem;
+      max-width: 100%
+    }
+
+    td {
+      vertical-align: top
+    }
+
+    pre,
+    code {
+      font-family: Menlo, Monaco, monospace
+    }
+
+    code {
+      background-color: #f9f9f9;
+      border-radius: 3px;
+      color: #bf616a;
+      font-size: 85%;
+      padding: .25em .5em
+    }
+
+    pre {
+      margin: 0 0 1rem
+    }
+
+    pre code {
+      background-color: transparent;
+      color: inherit;
+      font-size: 100%;
+      padding: 0
+    }
+
+    .highlight {
+      background-color: #f9f9f9;
+      border-radius: 3px;
+      line-height: 1.4;
+      margin: 0 0 1rem;
+      padding: 1rem
+    }
+
+    .highlight pre {
+      margin-bottom: 0;
+      overflow-x: auto
+    }
+
+    .highlight .lineno {
+      color: #aaa;
+      display: inline-block;
+      padding: 0 .75rem 0 .25rem;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      user-select: none
+    }
+
+    .post {
+      padding: 3rem 0
+    }
+
+    .post-info {
+      color: #aaa;
+      font-family: Palatino, palatino lt std, palatino linotype, book antiqua, georgia, serif;
+      letter-spacing: .5px;
+      text-align: center
+    }
+
+    .post-info span {
+      font-style: italic
+    }
+
+    .post-title {
+      color: #353535;
+      font-family: helvetica neue, segoe ui, Helvetica, Arial, sans-serif;
+      font-size: 4rem;
+      margin: 1rem 0;
+      text-align: center
+    }
+
+    .post-line {
+      border-top: .4rem solid #353535;
+      display: block;
+      margin: 0 auto 3rem;
+      width: 4rem
+    }
+
+    .post p {
+      margin: 0 0 1rem;
+      text-align: justify
+    }
+
+    .post a:hover {
+      text-decoration: underline
+    }
+
+    .post img {
+      margin: 0 auto .5rem
+    }
+
+    .post img+em {
+      color: #aaa;
+      display: block;
+      font-family: helvetica neue, segoe ui, Helvetica, Arial, sans-serif;
+      font-size: .9rem;
+      font-style: normal;
+      text-align: center
+    }
+
+    .post img.emoji {
+      display: inline-block;
+      left: 0;
+      transform: none;
+      width: 1rem;
+      height: 1rem;
+      vertical-align: text-top;
+      padding: 0;
+      margin: 0
+    }
+
+    .highlight .hll {
+      background-color: #ffc
+    }
+
+    .highlight .c {
+      color: #999
+    }
+
+    .highlight .err {
+      color: #a00;
+      background-color: #faa
+    }
+
+    .highlight .k {
+      color: #069
+    }
+
+    .highlight .o {
+      color: #555
+    }
+
+    .highlight .cm {
+      color: #09f;
+      font-style: italic
+    }
+
+    .highlight .cp {
+      color: #099
+    }
+
+    .highlight .c1 {
+      color: #999
+    }
+
+    .highlight .cs {
+      color: #999
+    }
+
+    .highlight .gd {
+      background-color: #fcc;
+      border: 1px solid #c00
+    }
+
+    .highlight .ge {
+      font-style: italic
+    }
+
+    .highlight .gr {
+      color: red
+    }
+
+    .highlight .gh {
+      color: #030
+    }
+
+    .highlight .gi {
+      background-color: #cfc;
+      border: 1px solid #0c0
+    }
+
+    .highlight .go {
+      color: #aaa
+    }
+
+    .highlight .gp {
+      color: #009
+    }
+
+    .highlight .gu {
+      color: #030
+    }
+
+    .highlight .gt {
+      color: #9c6
+    }
+
+    .highlight .kc {
+      color: #069
+    }
+
+    .highlight .kd {
+      color: #069
+    }
+
+    .highlight .kn {
+      color: #069
+    }
+
+    .highlight .kp {
+      color: #069
+    }
+
+    .highlight .kr {
+      color: #069
+    }
+
+    .highlight .kt {
+      color: #078
+    }
+
+    .highlight .m {
+      color: #f60
+    }
+
+    .highlight .s {
+      color: #d44950
+    }
+
+    .highlight .na {
+      color: #4f9fcf
+    }
+
+    .highlight .nb {
+      color: #366
+    }
+
+    .highlight .nc {
+      color: #0a8
+    }
+
+    .highlight .no {
+      color: #360
+    }
+
+    .highlight .nd {
+      color: #99f
+    }
+
+    .highlight .ni {
+      color: #999
+    }
+
+    .highlight .ne {
+      color: #c00
+    }
+
+    .highlight .nf {
+      color: #c0f
+    }
+
+    .highlight .nl {
+      color: #99f
+    }
+
+    .highlight .nn {
+      color: #0cf
+    }
+
+    .highlight .nt {
+      color: #2f6f9f
+    }
+
+    .highlight .nv {
+      color: #033
+    }
+
+    .highlight .ow {
+      color: #000
+    }
+
+    .highlight .w {
+      color: #bbb
+    }
+
+    .highlight .mf {
+      color: #f60
+    }
+
+    .highlight .mh {
+      color: #f60
+    }
+
+    .highlight .mi {
+      color: #f60
+    }
+
+    .highlight .mo {
+      color: #f60
+    }
+
+    .highlight .sb {
+      color: #c30
+    }
+
+    .highlight .sc {
+      color: #c30
+    }
+
+    .highlight .sd {
+      color: #c30;
+      font-style: italic
+    }
+
+    .highlight .s2 {
+      color: #c30
+    }
+
+    .highlight .se {
+      color: #c30
+    }
+
+    .highlight .sh {
+      color: #c30
+    }
+
+    .highlight .si {
+      color: #a00
+    }
+
+    .highlight .sx {
+      color: #c30
+    }
+
+    .highlight .sr {
+      color: #3aa
+    }
+
+    .highlight .s1 {
+      color: #c30
+    }
+
+    .highlight .ss {
+      color: #fc3
+    }
+
+    .highlight .bp {
+      color: #366
+    }
+
+    .highlight .vc {
+      color: #033
+    }
+
+    .highlight .vg {
+      color: #033
+    }
+
+    .highlight .vi {
+      color: #033
+    }
+
+    .highlight .il {
+      color: #f60
+    }
+
+    .css .o,
+    .css .o+.nt,
+    .css .nt+.nt {
+      color: #999
+    }
+
+    .container {
+      margin: 0 auto;
+      max-width: 900px;
+      width: 80%
+    }
+
+    main,
+    .nav-container {
+      display: block;
+      margin: 0 auto;
+      max-width: 900px;
+      width: 80%
+    }
+
+    .nav {
+      box-shadow: 0 2px 2px -2px rgba(0, 0, 0, .2);
+      overflow: auto
+    }
+
+    .nav-container {
+      margin: 1rem auto;
+      position: relative;
+      text-align: center
+    }
+
+    .nav-title {
+      -webkit-transition: all .2s ease-out;
+      -moz-transition: all .2s ease-out;
+      transition: all .2s ease-out;
+      color: #000;
+      display: inline-block;
+      margin: 0;
+      padding-right: .2rem
+    }
+
+    .nav-title:hover,
+    .nav-title:focus {
+      opacity: .6
+    }
+
+    .nav ul {
+      list-style-type: none;
+      margin: 1rem 0 0;
+      margin-left: 0;
+      padding: 0;
+      text-align: center;
+      display: flex;
+      justify-content: space-between;
+      align-items: center
+    }
+
+    .nav li {
+      -webkit-transition: all .2s ease-out;
+      -moz-transition: all .2s ease-out;
+      transition: all .2s ease-out;
+      color: #555;
+      display: inline-block;
+      opacity: .6;
+      padding: 0 2rem 0 0;
+      position: relative
+    }
+
+    .nav li:last-child {
+      margin-left: auto
+    }
+
+    .nav li:hover,
+    .nav li:focus {
+      opacity: 1
+    }
+
+    .nav a {
+      color: #555;
+      font-family: helvetica neue, segoe ui, Helvetica, Arial, sans-serif
+    }
+
+    @media(min-width:600px) {
+      .nav-container {
+        text-align: left
+      }
+    }
+
+    .pagination {
+      border-top: .5px solid #e5e5e5;
+      font-family: Palatino, palatino lt std, palatino linotype, book antiqua, georgia, serif;
+      padding-top: 2rem;
+      position: relative;
+      text-align: center
+    }
+
+    .pagination span {
+      color: #353535;
+      font-size: 1.1rem
+    }
+
+    .pagination .top {
+      -webkit-transition: all .3s ease-out;
+      -moz-transition: all .3s ease-out;
+      transition: all .3s ease-out;
+      color: #555;
+      font-family: helvetica neue, segoe ui, Helvetica, Arial, sans-serif;
+      font-size: 1.1rem;
+      opacity: .6
+    }
+
+    .pagination .top:hover {
+      opacity: 1
+    }
+
+    .pagination .arrow {
+      -webkit-transition: all .3s ease-out;
+      -moz-transition: all .3s ease-out;
+      transition: all .3s ease-out;
+      color: #555;
+      position: absolute
+    }
+
+    .pagination .arrow:hover,
+    .pagination .arrow:focus {
+      opacity: .6;
+      text-decoration: none
+    }
+
+    .pagination .left {
+      left: 0
+    }
+
+    .pagination .right {
+      right: 0
+    }
+
+    .catalogue-item {
+      border-bottom: 1px solid #e5e5e5;
+      color: #555;
+      display: block;
+      padding: 2rem 0
+    }
+
+    .catalogue-item:hover .catalogue-line,
+    .catalogue-item:focus .catalogue-line {
+      width: 5rem
+    }
+
+    .catalogue-item:last-child {
+      border: 0
+    }
+
+    .catalogue-time {
+      color: #aaa;
+      font-family: Palatino, palatino lt std, palatino linotype, book antiqua, georgia, serif;
+      letter-spacing: .5px
+    }
+
+    .catalogue-title {
+      color: #353535;
+      display: block;
+      font-family: helvetica neue, segoe ui, Helvetica, Arial, sans-serif;
+      font-size: 2rem;
+      font-weight: 700;
+      margin: .5rem 0
+    }
+
+    .catalogue-line {
+      -webkit-transition: all .3s ease-out;
+      -moz-transition: all .3s ease-out;
+      transition: all .3s ease-out;
+      border-top: .2rem solid #353535;
+      display: block;
+      width: 2rem
+    }
+  </style>
+</body>
+
+</html>
